@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Emotion Diary</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!--Login/Signin Page -->
+<div id="auth-screen" class="screen active">
+  <div class="auth-card">
+    <h1>😊 Emotion Diary</h1>
+    <p class="subtitle"> Know Your Emotions, Starting Now </p>
+
+    <div class="tab-bar">
+      <button class="tab active" onclick="switchTab('login')"> Login </button>
+      <button class="tab" onclick="switchTab('register')"> Sign-up </button>
+    </div>
+
+    <div id="login-form">
+      <input type="text" id="login-user" placeholder="Username">
+      <input type="password" id="login-pass" placeholder="Password">
+      <button class="btn-primary" onclick="login()"> Login </button>
+    </div>
+
+    <div id="register-form" style="display:none">
+      <input type="text" id="reg-user" placeholder="Username">
+      <input type="password" id="reg-pass" placeholder="Password(at least 6 character)">
+      <button class="btn-primary" onclick="register()"> Sign-Up </button>
+    </div>
+    <p id="auth-msg" class="msg"></p>
+  </div>
+</div>
+
+<!-- Main Page -->
+<div id="main-screen" class="screen">
+  <header>
+    <h2>😊 Emotion Diary</h2>
+    <div>
+      <span id="welcome-text"></span>
+      <button class="btn-sm" onclick="showTab('history')">📖 History</button>
+      <button class="btn-sm" onclick="logout()"> Exit </button>
+    </div>
+  </header>
+
+  <div class="main-content">
+    <!-- Label -->
+    <div class="nav-tabs">
+      <button class="nav-tab active" onclick="showTab('detect')">📸 Emotion Detection </button>
+      <button class="nav-tab" onclick="showTab('diary')">✍️ Write Diary </button>
+      <button class="nav-tab" onclick="showTab('history')">📖 History Record</button>
+    </div>
+
+    <!-- Detection Pages -->
+    <div id="tab-detect" class="tab-content active">
+      <div class="detect-options">
+        <button class="option-btn active" onclick="setMode('upload')">📤 Upload Image </button>
+        <button class="option-btn" onclick="setMode('camera')">📷 Video </button>
+      </div>
+
+      <!-- Upload -->
+      <div id="mode-upload">
+        <div class="upload-area" onclick="document.getElementById('file-input').click()">
+          <p>📁 Click to upload image</p>
+          <p class="hint"> Only Support JPG / PNG</p>
+        </div>
+        <input type="file" id="file-input" accept="image/*" style="display:none" onchange="handleUpload(event)">
+        <img id="preview-img" class="preview-img" style="display:none">
+      </div>
+
+      <!-- Video -->
+      <div id="mode-camera" style="display:none">
+        <video id="video" autoplay playsinline></video>
+        <canvas id="canvas" style="display:none"></canvas>
+        <div class="camera-btns">
+          <button class="btn-primary" onclick="startCamera()"> Open Camera </button>
+          <button class="btn-secondary" onclick="capturePhoto()" id="capture-btn" disabled>📸 Take Picture</button>
+        </div>
+        <img id="captured-img" class="preview-img" style="display:none">
+      </div>
+
+      <button class="btn-primary detect-btn" onclick="detectEmotion()" id="detect-btn" disabled>
+        🔍 Starting Detection Emotion
+      </button>
+
+      <!-- Result -->
+      <div id="result-area" style="display:none">
+        <div class="result-card">
+          <div class="emotion-display">
+            <span id="emotion-emoji" class="emotion-emoji"></span>
+            <div>
+              <h3 id="emotion-name"></h3>
+              <p id="emotion-confidence" class="confidence"></p>
+            </div>
+          </div>
+          <div class="emotion-bars" id="emotion-bars"></div>
+          <div class="advice-box">
+            <p id="advice-text"></p>
+          </div>
+          <button class="btn-secondary" onclick="goToDiary()">✍️ Record to Diary</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Writing -->
+    <div id="tab-diary" class="tab-content">
+      <div class="diary-card">
+        <h3> Today Feelings</h3>
+        <div class="emotion-selector">
+          <button class="emo-btn" onclick="selectEmotion('happy','HAPPY','😊')">😊 Happy </button>
+          <button class="emo-btn" onclick="selectEmotion('sad','SAD','😢')">😢 Sad</button>
+          <button class="emo-btn" onclick="selectEmotion('angry','ANGRY','😠')">😠 Angry</button>
+          <button class="emo-btn" onclick="selectEmotion('fear','FEAR','😨')">😨 Fear</button>
+          <button class="emo-btn" onclick="selectEmotion('surprise','SURPRISE','😲')">😲 Surprice</button>
+          <button class="emo-btn" onclick="selectEmotion('neutral','CALM','😐')">😐 Calm</button>
+        </div>
+        <p id="selected-emotion-text" class="selected-emotion"></p>
+        <textarea id="diary-text" placeholder="How was your feelings today? " rows="8"></textarea>
+        <button class="btn-primary" onclick="saveDiary()">💾 Save</button>
+        <p id="diary-msg" class="msg"></p>
+      </div>
+    </div>
+
+    <!-- History -->
+    <div id="tab-history" class="tab-content">
+      <h3>History</h3>
+      <div id="history-list"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const EMOJI_MAP = {
+  happy:'😊', sad:'😢', angry:'😠', fear:'😨',
+  surprise:'😲', disgust:'🤢', neutral:'😐'
+};
+
+let currentImage = null;
+let currentEmotion = null;
+let currentMode = 'upload';
+let stream = null;
+
+//approve
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('login-form').style.display = tab === 'login' ? 'block' : 'none';
+  document.getElementById('register-form').style.display = tab === 'register' ? 'block' : 'none';
+}
+
+async function login() {
+  const username = document.getElementById('login-user').value.trim();
+  const password = document.getElementById('login-pass').value.trim();
+  const res = await fetch('/login', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({username, password})
+  });
+  const data = await res.json();
+  if (data.success) {
+    document.getElementById('auth-screen').classList.remove('active');
+    document.getElementById('main-screen').classList.add('active');
+    document.getElementById('welcome-text').textContent = `Hi，${data.username}！`;
+  } else {
+    document.getElementById('auth-msg').textContent = data.message;
+  }
+}
+
+async function register() {
+  const username = document.getElementById('reg-user').value.trim();
+  const password = document.getElementById('reg-pass').value.trim();
+  const res = await fetch('/register', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({username, password})
+  });
+  const data = await res.json();
+  document.getElementById('auth-msg').textContent = data.message;
+  if (data.success) switchTab('login');
+}
+
+async function logout() {
+  await fetch('/logout', {method:'POST'});
+  location.reload();
+}
+
+//exchange label
+function showTab(tab) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  if (tab === 'history') loadHistory();
+}
+
+function setMode(mode) {
+  currentMode = mode;
+  document.querySelectorAll('.option-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('mode-upload').style.display = mode === 'upload' ? 'block' : 'none';
+  document.getElementById('mode-camera').style.display = mode === 'camera' ? 'block' : 'none';
+  currentImage = null;
+  document.getElementById('detect-btn').disabled = true;
+  document.getElementById('result-area').style.display = 'none';
+  if (mode !== 'camera' && stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+}
+
+//upload image
+function handleUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    currentImage = e.target.result;
+    const img = document.getElementById('preview-img');
+    img.src = currentImage;
+    img.style.display = 'block';
+    document.getElementById('detect-btn').disabled = false;
+  };
+  reader.readAsDataURL(file);
+}
+
+//camera
+async function startCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({video: true});
+    document.getElementById('video').srcObject = stream;
+    document.getElementById('capture-btn').disabled = false;
+  } catch (e) {
+    alert('Decline from the camera：' + e.message);
+  }
+}
+
+function capturePhoto() {
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  currentImage = canvas.toDataURL('image/jpeg');
+  const img = document.getElementById('captured-img');
+  img.src = currentImage;
+  img.style.display = 'block';
+  document.getElementById('detect-btn').disabled = false;
+  if (stream) { stream.getTracks().forEach(t => t.stop()); }
+}
+
+//emotion detection
+async function detectEmotion() {
+  if (!currentImage) return;
+  const btn = document.getElementById('detect-btn');
+  btn.textContent = '⏳ Detecting...'; btn.disabled = true;
+
+  const res = await fetch('/detect', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({image: currentImage})
+  });
+  const data = await res.json();
+  btn.textContent = '🔍 Starting detect'; btn.disabled = false;
+
+  if (!data.success) { alert('Error!：' + data.message); return; }
+
+  currentEmotion = data;
+  document.getElementById('result-area').style.display = 'block';
+  document.getElementById('emotion-emoji').textContent = EMOJI_MAP[data.emotion] || '😐';
+  document.getElementById('emotion-name').textContent = data.emotion_en + ' (' + data.emotion + ')';
+  document.getElementById('emotion-confidence').textContent = 'Confifence Level：' + data.confidence.toFixed(1) + '%';
+  document.getElementById('advice-text').textContent = data.advice;
+
+  //show emotion barchart
+  const barsEl = document.getElementById('emotion-bars');
+  barsEl.innerHTML = '';
+  const enMap = {happy:'Happy',sad:'Sad',angry:'Angry',fear:'Fear',surprise:'Surprise',disgust:'Disgust',neutral:'Calm'};
+  Object.entries(data.all_emotions).sort((a,b) => b[1]-a[1]).forEach(([emo, val]) => {
+    barsEl.innerHTML += `
+      <div class="bar-row">
+        <span class="bar-label">${enMap[emo]||emo}</span>
+        <div class="bar-track"><div class="bar-fill" style="width:${val}%"></div></div>
+        <span class="bar-val">${val.toFixed(1)}%</span>
+      </div>`;
+  });
+}
+
+function goToDiary() {
+  if (currentEmotion) {
+    selectEmotion(currentEmotion.emotion, currentEmotion.emotion_en, EMOJI_MAP[currentEmotion.emotion]||'😐');
+  }
+  showTab('diary');
+}
+
+//diary
+let selectedEmotion = null;
+function selectEmotion(emo, en, emoji) {
+  selectedEmotion = {emotion: emo, confidence: currentEmotion ? currentEmotion.confidence : 80};
+  document.querySelectorAll('.emo-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('selected-emotion-text').textContent = `Choosed：${emoji} ${en}`;
+}
+
+async function saveDiary() {
+  if (!selectedEmotion) { document.getElementById('diary-msg').textContent = 'Choose your feeling today'; return; }
+  const text = document.getElementById('diary-text').value.trim();
+  const res = await fetch('/save_diary', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({emotion: selectedEmotion.emotion, confidence: selectedEmotion.confidence, diary_entry: text})
+  });
+  const data = await res.json();
+  document.getElementById('diary-msg').textContent = data.message;
+  if (data.success) { document.getElementById('diary-text').value = ''; selectedEmotion = null; }
+}
+
+//history record
+async function loadHistory() {
+  const res = await fetch('/history');
+  const data = await res.json();
+  const list = document.getElementById('history-list');
+  if (!data.records || data.records.length === 0) {
+    list.innerHTML = '<p class="hint"> There is no any record. Please have a detection！</p>'; return;
+  }
+  list.innerHTML = data.records.map(r => `
+    <div class="history-item">
+      <div class="history-header">
+        <span>${EMOJI_MAP[r.emotion]||'😐'} <strong>${r.emotion_en}</strong></span>
+        <span class="hint">${r.created_at.slice(0,16)}</span>
+      </div>
+      ${r.diary_entry ? `<p class="diary-preview">${r.diary_entry}</p>` : ''}
+    </div>`).join('');
+}
+</script>
+</body>
+</html>
